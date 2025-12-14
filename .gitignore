@@ -1,3 +1,4 @@
 # Ignore the file containing your API key
 
 .streamlit/secrets.toml
+!.streamlit/
