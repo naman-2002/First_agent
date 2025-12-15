@@ -83,7 +83,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             
             try:
                 current_jobs = scrape_jobs(
-                    site_name=["google"], 
+                    site_name=["linkldin", "indeed"], 
                     search_term=term,
                     location=loc,
                     results_wanted=RESULTS_WANTED,
@@ -133,6 +133,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             "Company": job.get('company', 'N/A'),
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
+            "Experience": job.get('experience', 'N/A')
             "AI Summary": ai_summary,
             "Apply Link": job.get('job_url', 'N/A')
         })
