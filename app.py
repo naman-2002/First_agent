@@ -4,6 +4,7 @@ import google.generativeai as genai
 import time
 import random
 import streamlit as st # New Library
+import json
 
 # --- CONFIGURATION (Move outside function for Streamlit) ---
 # Use Streamlit secrets for the API key (safer than hardcoding)
@@ -16,36 +17,45 @@ GOOGLE_API_KEY = st.secrets["GEMINI_API_KEY"]
 # Use a stable model
 MODEL_NAME = 'gemini-2.5-flash'
 
-# --- UTILITY FUNCTION ---
 def summarize_job(description):
-    """
-    Uses the AI Agent to read the job description and create a summary.
-    """
     if not description or len(description) < 50:
-        return "No description available to summarize."
-    
+        return {
+            "experience": "Not specified",
+            "skills": "Not specified",
+            "responsibilities": "Not specified",
+            "summary": "No description available"
+        }
+
     prompt = f"""
-    You are a helpful job assistant. Summarize the following job description in 3 concise bullet points for quick review:
-    1. Key Tech Stack/Skills required.
-    2. Main Responsibilities (1-2 sentences).
-    3. Required Experience Level (choose ONE):
-    - Fresher / Entry-level
-    - 1–3 years
-    - 3–5 years
-    - 5+ years
-    - Senior / Lead
-    - Not specified
-    
+    Extract information from the job description.
+    Return ONLY valid JSON. No markdown. No explanation.
+
+    {{
+      "experience": "Fresher / Entry-level | if experience needed then provide in range i.e. 0-2 years, 3+ year, 1 year, 1-3 year | Not specified",
+      "skills": "Comma separated key skills",
+      "responsibilities": "1–2 sentence summary",
+      "summary": "3 bullet points summary"
+    }}
+
     Job Description:
     {description[:5000]}
     """
+
     try:
         genai.configure(api_key=GOOGLE_API_KEY)
         model = genai.GenerativeModel(MODEL_NAME)
         response = model.generate_content(prompt)
-        return response.text
+
+        return json.loads(response.text)
+
     except Exception as e:
-        return f"AI Summary Failed: {str(e)}"
+        return {
+            "experience": "Not specified",
+            "skills": "Not specified",
+            "responsibilities": "Not specified",
+            "summary": f"AI parsing failed: {str(e)}"
+        }
+
 
 # --- STREAMLIT FRONTEND/AGENT RUNNER ---
 st.title("💡 Agentic Job Search Dashboard")
@@ -89,7 +99,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             
             try:
                 current_jobs = scrape_jobs(
-                    site_name=["linkedin", "indeed"], 
+                    site_name=["linkldin", "indeed"], 
                     search_term=term,
                     location=loc,
                     results_wanted=RESULTS_WANTED,
@@ -132,19 +142,19 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         progress_bar.progress(progress_percentage, text=f"Processing {index + 1} of {total_jobs}: {title[:40]}...")
         
         description = job.get('description', '')
-        ai_summary = summarize_job(description)
+        ai_output = summarize_job(description)
         
         results_list.append({
             "Job Title": title,
             "Company": job.get('company', 'N/A'),
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
-            "Experience Level": extracted_experience,
-            "Key Skills": extracted_skills,
-            "Responsibility": extracted_skills,
-            "AI Summary": ai_summary,
+            "Experience Level": ai_output["experience"],
+            "Key Skills": ai_output["skills"],
+            "Responsibility": ai_output["responsibilities"],
             "Apply Link": job.get('job_url', 'N/A')
         })
+
         time.sleep(0.5) # Shorter sleep here since the AI call is the bottleneck
         
     progress_bar.empty()
@@ -172,4 +182,3 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
-
