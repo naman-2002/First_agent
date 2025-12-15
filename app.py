@@ -138,8 +138,11 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         title = job.get('title', 'N/A')
         
         # Display progress
-        progress_percentage = int(((index + 1) / total_jobs) * 100)
-        progress_bar.progress(progress_percentage, text=f"Processing {index + 1} of {total_jobs}: {title[:40]}...")
+        if total_jobs > 0:
+            raw_progress = ((index + 1) / total_jobs) * 100
+            progress_percentage = max(0, min(100, round(raw_progress)))
+        else:
+            progress_percentage = 0
         
         description = job.get('description', '')
         ai_output = summarize_job(description)
@@ -182,5 +185,6 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
