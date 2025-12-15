@@ -169,11 +169,13 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
     st.subheader("Results Dashboard [Image of Data Visualization Dashboard]")
 
     st.dataframe(
-        final_df, 
+        final_df,
         column_config={
-            "Apply Link": st.column_config.link_column("Apply Link"),
-            "AI Summary": st.column_config.text_column("AI Summary", help="AI-generated key takeaways."),
-            # Set other columns to text for better readability
+            "Apply Link": st.column_config.LinkColumn("Apply Link"),
+            "AI Summary": st.column_config.TextColumn(
+            "AI Summary",
+            help="AI-generated key takeaways."
+            ),
         },
         hide_index=True
     )
@@ -185,6 +187,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
