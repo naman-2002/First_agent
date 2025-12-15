@@ -28,7 +28,13 @@ def summarize_job(description):
     You are a helpful job assistant. Summarize the following job description in 3 concise bullet points for quick review:
     1. Key Tech Stack/Skills required.
     2. Main Responsibilities (1-2 sentences).
-    3. Experience Needed (e.g., Fresher, 3+ years, Senior).
+    3. Required Experience Level (choose ONE):
+    - Fresher / Entry-level
+    - 1–3 years
+    - 3–5 years
+    - 5+ years
+    - Senior / Lead
+    - Not specified
     
     Job Description:
     {description[:5000]}
@@ -133,7 +139,9 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             "Company": job.get('company', 'N/A'),
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
-            "Experience": job.get('experience', 'N/A')
+            "Experience Level": extracted_experience,
+            "Key Skills": extracted_skills,
+            "Responsibility": extracted_skills,
             "AI Summary": ai_summary,
             "Apply Link": job.get('job_url', 'N/A')
         })
