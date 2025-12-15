@@ -2,3 +2,5 @@ pandas
 python-jobspy
 google-generativeai
 streamlit
+json
+
