@@ -89,7 +89,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             
             try:
                 current_jobs = scrape_jobs(
-                    site_name=["linkldin", "indeed"], 
+                    site_name=["linkedin", "indeed"], 
                     search_term=term,
                     location=loc,
                     results_wanted=RESULTS_WANTED,
@@ -172,3 +172,4 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
