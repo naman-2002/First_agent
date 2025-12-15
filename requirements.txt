@@ -1,6 +1,6 @@
-pandas
+pandas>=2.0
 python-jobspy
 google-generativeai
 streamlit
-json
+
 
