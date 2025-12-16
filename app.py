@@ -104,7 +104,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
                     location=loc,
                     results_wanted=RESULTS_WANTED,
                     hours_old=HOURS_OLD,
-                    linkedin_fetch_description=False 
+                    linkedin_fetch_description=True
                 )
                 
                 if not current_jobs.empty:
@@ -149,6 +149,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         
         results_list.append({
             "Job Title": title,
+            "Description": job.get('description', 'N/A'),
             "Company": job.get('company', 'N/A'),
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
@@ -187,6 +188,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
