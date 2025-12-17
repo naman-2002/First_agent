@@ -28,20 +28,22 @@ def clean_description(text):
     if not text:
         return ""
 
-    # Decode HTML entities
     text = html.unescape(text)
 
-    # Remove non-breaking spaces and weird unicode
-    for k,v in cleaning_dict.items():
+    for k, v in cleaning_dict.items():
         text = text.replace(k, v)
 
-    # Replace multiple newlines with one newline
+    # Remove excessive newlines
     text = re.sub(r"\n\s*\n+", "\n", text)
 
-    # Replace multiple spaces/tabs with single space
+    # Normalize spaces/tabs
     text = re.sub(r"[ \t]+", " ", text)
 
+    # 🔥 FINAL CATCH-ALL (THIS FIXES YOUR ISSUE)
+    text = re.sub(r"\s+", " ", text)
+
     return text.strip()
+
 
 
 def summarize_job(description):
@@ -186,7 +188,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         
         results_list.append({
             "Job Title": title,
-            "Description": job.get('description', 'N/A'),
+            "Description": description,
             "Company": job.get('company', 'N/A'),
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
@@ -225,6 +227,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
