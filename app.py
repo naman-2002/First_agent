@@ -5,6 +5,8 @@ import time
 import random
 import streamlit as st # New Library
 import json
+import re
+import html
 
 # --- CONFIGURATION (Move outside function for Streamlit) ---
 # Use Streamlit secrets for the API key (safer than hardcoding)
@@ -17,6 +19,31 @@ GOOGLE_API_KEY = st.secrets["GEMINI_API_KEY"]
 # Use a stable model
 MODEL_NAME = 'gemini-2.5-flash'
 
+cleaning_dict = {
+    "â€™": "'",
+    "â€": " "
+}
+
+def clean_description(text):
+    if not text:
+        return ""
+
+    # Decode HTML entities
+    text = html.unescape(text)
+
+    # Remove non-breaking spaces and weird unicode
+    for k,v in cleaning_dict:
+        text = text.replace(k, v)
+
+    # Replace multiple newlines with one newline
+    text = re.sub(r"\n\s*\n+", "\n", text)
+
+    # Replace multiple spaces/tabs with single space
+    text = re.sub(r"[ \t]+", " ", text)
+
+    return text.strip()
+
+
 def summarize_job(description):
     if not description or len(description) < 50:
         return {
@@ -27,18 +54,27 @@ def summarize_job(description):
         }
 
     prompt = f"""
-    Extract information from the job description.
-    Return ONLY valid JSON. No markdown. No explanation.
+    You are an information extraction system.
 
+    Return ONLY valid JSON.
+    Do NOT add explanations or markdown.
+
+    Rules:
+    - If experience is unclear, return "Not specified"
+    - Do NOT invent experience
+    - Keep skills concise
+    - Responsibilities must be factual
+
+    JSON format:
     {{
-      "experience": "Fresher / Entry-level | if experience needed then provide in range i.e. 0-2 years, 3+ year, 1 year, 1-3 year | Not specified",
-      "skills": "Comma separated key skills",
-      "responsibilities": "1–2 sentence summary",
-      "summary": "3 bullet points summary"
+   "experience": "0-1 years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
+   "skills": "Comma separated skills only",
+   "responsibilities": "One concise sentence",
+   "summary": "Exactly 3 bullet points"
     }}
 
     Job Description:
-    {description[:5000]}
+    {description[:7000]}
     """
 
     try:
@@ -142,9 +178,10 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             raw_progress = ((index + 1) / total_jobs) * 100
             progress_percentage = max(0, min(100, round(raw_progress)))
         else:
-            progress_percentage = 0
-        
+            progress_percentage = progress_percentage = 0
+            
         description = job.get('description', '')
+        description = clean_description(description)
         ai_output = summarize_job(description)
         
         results_list.append({
@@ -188,6 +225,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
