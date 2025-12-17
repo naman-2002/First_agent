@@ -21,28 +21,62 @@ MODEL_NAME = 'gemini-2.5-flash'
 
 cleaning_dict = {
     "â€™": "'",
-    "â€": " "
+    "â€": " ",
+    "\.": ".",
+    "\+": "+",
+    "\-": "-"
 }
 
-def clean_description(text):
+
+def clean_description(text: str, preserve_paragraphs: bool = True) -> str:
+    """
+    Clean scraped job descriptions.
+
+    - If preserve_paragraphs=True: keep up to TWO consecutive newlines (paragraph breaks),
+      but remove excessive blank lines and normalize in-paragraph spacing.
+    - If preserve_paragraphs=False: collapse all whitespace into single spaces (fully flattened).
+    """
     if not text:
         return ""
 
+    # 1) HTML entities -> plain text
     text = html.unescape(text)
 
+    
+
+    # 3) normalize line endings (Windows CRLF -> LF)
+    text = text.replace("\r\n", "\n").replace("\r", "\n")
+
+    if preserve_paragraphs:
+        # A) collapse 3+ newlines into exactly 2 (preserve paragraph breaks)
+        text = re.sub(r"\n{3,}", "\n\n", text)
+
+        # B) remove spaces that start or end lines
+        text = re.sub(r"[ \t]+\n", "\n", text)
+        text = re.sub(r"\n[ \t]+", "\n", text)
+
+        # C) collapse multiple spaces/tabs inside lines to one space
+        text = re.sub(r"[ \t]{2,}", " ", text)
+
+        # D) collapse remaining sequences of whitespace longer than 1 char but keep single newlines
+        # Replace any run of whitespace that does NOT contain '\n' with a single space
+        text = re.sub(r"[^\S\n]+", " ", text)
+
+        # E) trim leading/trailing whitespace on whole text and each line
+        text = "\n".join(line.strip() for line in text.split("\n")).strip()
+
+    else:
+        # Fully flatten: collapse everything to single-space tokens (no newlines)
+        text = re.sub(r"\s+", " ", text).strip()
+
+    # 2) apply small token fixes you discovered
     for k, v in cleaning_dict.items():
         text = text.replace(k, v)
 
-    # Remove excessive newlines
-    text = re.sub(r"\n\s*\n+", "\n", text)
+    # Optional: final tiny normalizations
+    text = re.sub(r"\n{3,}", "\n\n", text)  # safety
+    return text
 
-    # Normalize spaces/tabs
-    text = re.sub(r"[ \t]+", " ", text)
-
-    # 🔥 FINAL CATCH-ALL (THIS FIXES YOUR ISSUE)
-    text = re.sub(r"\s+", " ", text)
-
-    return text.strip()
 
 
 
@@ -183,12 +217,12 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             progress_percentage = progress_percentage = 0
             
         description = job.get('description', '')
-        description = clean_description(description)
+        description1 = clean_description(description, preserve_paragraphs=True)
         ai_output = summarize_job(description)
         
         results_list.append({
             "Job Title": title,
-            "Description": description,
+            "Description": description1,
             "Company": job.get('company', 'N/A'),
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
@@ -227,6 +261,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
