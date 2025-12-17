@@ -32,7 +32,7 @@ def clean_description(text):
     text = html.unescape(text)
 
     # Remove non-breaking spaces and weird unicode
-    for k,v in cleaning_dict:
+    for k,v in cleaning_dict.items():
         text = text.replace(k, v)
 
     # Replace multiple newlines with one newline
@@ -225,6 +225,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
