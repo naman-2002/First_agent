@@ -42,7 +42,9 @@ def clean_description(text: str, preserve_paragraphs: bool = True) -> str:
     # 1) HTML entities -> plain text
     text = html.unescape(text)
 
-    
+    # 2) apply small token fixes you discovered
+    for k, v in cleaning_dict.items():
+        text = text.replace(k, v)
 
     # 3) normalize line endings (Windows CRLF -> LF)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
@@ -261,6 +263,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
