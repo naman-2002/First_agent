@@ -176,6 +176,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
                     site_name=["linkedin", "indeed"], 
                     search_term=term,
                     location=loc,
+                    # google_search_term="operation research jobs in remote",
                     results_wanted=RESULTS_WANTED,
                     hours_old=HOURS_OLD,
                     linkedin_fetch_description=True
@@ -220,7 +221,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             
         description = job.get('description', '')
         description1 = clean_description(description, preserve_paragraphs=True)
-        ai_output = summarize_job(description)
+        ai_output = summarize_job(description1)
         
         results_list.append({
             "Job Title": title,
@@ -263,7 +264,6 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
-
 
 
 
