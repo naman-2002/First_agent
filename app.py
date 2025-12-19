@@ -125,24 +125,28 @@ def summarize_job(description):
         }
 
     prompt = f"""
-    You are an information extraction system.
+    You are a job analysis assistant.
 
-    Return ONLY valid JSON.
-    Do NOT add explanations or markdown.
+    Return ONLY valid JSON. No explanations.
 
     Rules:
-    - If experience is unclear"
-    - Do NOT invent experience
-
+    - First check if years of experience are explicitly mentioned.
+    - If yes, map them to the closest bucket.
+    - If not mentioned, infer experience using:
+      - Job title (e.g., Senior, Lead, Manager)
+      - Role scope and responsibility language
+    - If still unclear, return "Not specified".
+    - Do NOT invent precise years—only choose from the allowed buckets.
 
     JSON format:
     {{
       "experience": "0-1 years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
-      "summary": "Exactly 3 bullet points"
+      "summary": ["bullet 1", "bullet 2", "bullet 3"]
     }}
 
     Job Description:
     {description[:10000]}
+
     """
 
     try:
@@ -308,6 +312,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
