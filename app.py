@@ -112,7 +112,12 @@ def clean_description(text: str, preserve_paragraphs: bool = True) -> str:
     text = re.sub(r"\n{3,}", "\n\n", text)  # safety
     return text
 
-
+def normalize_summary(summary):
+    if isinstance(summary, list):
+        return " ".join(str(s) for s in summary)
+    if summary is None:
+        return "Not specified"
+    return str(summary)
 
 
 def summarize_job(description):
@@ -136,12 +141,13 @@ def summarize_job(description):
       - Job title (e.g., Senior, Lead, Manager)
       - Role scope and responsibility language
     - If still unclear, return "Not specified".
-    - Do NOT invent precise years—only choose from the allowed buckets.
+    - Do NOT invent precise years—only choose from the allowed closest buckets.
+    - Summary must be 3–4 concise sentences in plain text (NO bullet points).
 
     JSON format:
     {{
-      "experience": "0-1 years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
-      "summary": ["bullet 1", "bullet 2", "bullet 3"]
+      "experience": "0-1 years | 0-2 year | 2+ years | 3+ years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
+      "summary": "3–4 sentence summary in plain text"
     }}
 
     Job Description:
@@ -283,7 +289,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             "Job Type": job.get('job_type', 'N/A'),
             "Experience Level": ai_output["experience"],
             "Apply Link": job.get('job_url', 'N/A'),
-            "Summary": ai_output["summary"]
+            "Summary": normalize_summary(ai_output["summary"])
         })
 
         time.sleep(0.5) # Shorter sleep here since the AI call is the bottleneck
@@ -315,6 +321,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
