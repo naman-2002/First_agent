@@ -8,6 +8,39 @@ import json
 import re
 import html
 
+
+
+def parse_json_with_retry(text, model, prompt_retry=None, max_tries=1):
+    # Try direct parse
+    try:
+        return json.loads(text)
+    except Exception:
+        # attempt to find first {...} block
+        m = re.search(r"(\{.*\})", text, flags=re.S)
+        if m:
+            try:
+                return json.loads(m.group(1))
+            except Exception:
+                pass
+
+    # If we get here, ask the model to return ONLY JSON (one retry)
+    for _ in range(max_tries):
+        if not prompt_retry:
+            prompt_retry = "The previous output was not valid JSON. Please output only valid JSON for the required fields, and nothing else."
+        resp = model.generate_content(prompt_retry, temperature=0)
+        try:
+            return json.loads(resp.text)
+        except Exception:
+            # try extracting substring
+            m = re.search(r"(\{.*\})", resp.text, flags=re.S)
+            if m:
+                try:
+                    return json.loads(m.group(1))
+                except Exception:
+                    pass
+    return None
+
+
 # --- CONFIGURATION (Move outside function for Streamlit) ---
 # Use Streamlit secrets for the API key (safer than hardcoding)
 # To use this, create a .streamlit/secrets.toml file with the key.
@@ -105,10 +138,10 @@ def summarize_job(description):
 
     JSON format:
     {{
-   "experience": "0-1 years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
-   "skills": "Comma separated skills only",
-   "responsibilities": "One concise sentence",
-   "summary": "Exactly 3 bullet points"
+      "experience": "0-1 years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
+      "skills": "Comma separated skills only",
+      "responsibilities": "One concise sentence",
+      "summary": "Exactly 3 bullet points"
     }}
 
     Job Description:
@@ -118,17 +151,36 @@ def summarize_job(description):
     try:
         genai.configure(api_key=GOOGLE_API_KEY)
         model = genai.GenerativeModel(MODEL_NAME)
-        response = model.generate_content(prompt)
 
-        return json.loads(response.text)
+        # 1️⃣ Ask the LLM
+        response = model.generate_content(prompt, temperature=0)
+
+        # 2️⃣ Parse safely + retry if needed
+        ai_json = parse_json_with_retry(
+            response.text,
+            model,
+            prompt_retry="Please return ONLY valid JSON. No extra text."
+        )
+
+        # 3️⃣ Final guard
+        if ai_json is None:
+            return {
+                "experience": "Not specified",
+                "skills": "Not specified",
+                "responsibilities": "Not specified",
+                "summary": "AI parsing failed"
+            }
+
+        return ai_json
 
     except Exception as e:
         return {
             "experience": "Not specified",
             "skills": "Not specified",
             "responsibilities": "Not specified",
-            "summary": f"AI parsing failed: {str(e)}"
+            "summary": f"AI error: {str(e)}"
         }
+
 
 
 # --- STREAMLIT FRONTEND/AGENT RUNNER ---
@@ -264,12 +316,4 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
-
-
-
-
-
-
-
-
 
