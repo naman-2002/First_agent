@@ -27,7 +27,7 @@ def parse_json_with_retry(text, model, prompt_retry=None, max_tries=1):
     for _ in range(max_tries):
         if not prompt_retry:
             prompt_retry = "The previous output was not valid JSON. Please output only valid JSON for the required fields, and nothing else."
-        resp = model.generate_content(prompt_retry, temperature=0)
+        resp = model.generate_content(prompt_retry, generation_config={"temperature": 0.0})
         try:
             return json.loads(resp.text)
         except Exception:
@@ -154,7 +154,10 @@ def summarize_job(description):
         model = genai.GenerativeModel(MODEL_NAME)
 
         # 1️⃣ Ask the LLM
-        response = model.generate_content(prompt, temperature=0)
+        response = model.generate_content(
+        prompt,
+        generation_config={"temperature": 0.0}
+        )
 
         # 2️⃣ Parse safely + retry if needed
         ai_json = parse_json_with_retry(
@@ -312,6 +315,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
