@@ -275,7 +275,8 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
             "Experience Level": ai_output["experience"],
-            "Apply Link": job.get('job_url', 'N/A')
+            "Apply Link": job.get('job_url', 'N/A'),
+            "Summary": ai_output["summary"]
         })
 
         time.sleep(0.5) # Shorter sleep here since the AI call is the bottleneck
@@ -307,5 +308,6 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
