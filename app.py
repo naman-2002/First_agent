@@ -131,21 +131,18 @@ def summarize_job(description):
     Do NOT add explanations or markdown.
 
     Rules:
-    - If experience is unclear, return "Not specified"
+    - If experience is unclear"
     - Do NOT invent experience
-    - Keep skills concise
-    - Responsibilities must be factual
+
 
     JSON format:
     {{
       "experience": "0-1 years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
-      "skills": "Comma separated skills only",
-      "responsibilities": "One concise sentence",
       "summary": "Exactly 3 bullet points"
     }}
 
     Job Description:
-    {description[:7000]}
+    {description[:10000]}
     """
 
     try:
@@ -166,8 +163,6 @@ def summarize_job(description):
         if ai_json is None:
             return {
                 "experience": "Not specified",
-                "skills": "Not specified",
-                "responsibilities": "Not specified",
                 "summary": "AI parsing failed"
             }
 
@@ -176,8 +171,6 @@ def summarize_job(description):
     except Exception as e:
         return {
             "experience": "Not specified",
-            "skills": "Not specified",
-            "responsibilities": "Not specified",
             "summary": f"AI error: {str(e)}"
         }
 
@@ -282,8 +275,6 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
             "Experience Level": ai_output["experience"],
-            "Key Skills": ai_output["skills"],
-            "Responsibility": ai_output["responsibilities"],
             "Apply Link": job.get('job_url', 'N/A')
         })
 
@@ -316,4 +307,5 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
