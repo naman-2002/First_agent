@@ -135,6 +135,8 @@ def summarize_job(description):
     Return ONLY valid JSON. No explanations.
 
     Rules:
+    - what is the job type given job description is offering.
+    - Is job is a intership, part time, full time or what, plese choose the type mentioned in the json format.
     - First check if years of experience are explicitly mentioned.
     - If yes, map them to the closest bucket.
     - If not mentioned, infer experience using:
@@ -146,12 +148,13 @@ def summarize_job(description):
 
     JSON format:
     {{
-      "experience": "0-1 years | 0-2 year | 2+ years | 3+ years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
+      "job_type" : Full Time | Intership | Contract | Part-Time,
+      "experience": "0-1 years | 1+ years | 0-2 year | 2+ years | 3+ years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
       "summary": "3–4 sentence summary in plain text"
     }}
 
     Job Description:
-    {description[:10000]}
+    {description[:9000]}
 
     """
 
@@ -287,6 +290,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             "Company": job.get('company', 'N/A'),
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
+            "Ai_job_type" : ai_output["job_type"],
             "Experience Level": ai_output["experience"],
             "Apply Link": job.get('job_url', 'N/A'),
             "Summary": normalize_summary(ai_output["summary"])
@@ -321,6 +325,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
