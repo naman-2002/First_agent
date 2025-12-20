@@ -61,7 +61,7 @@ cleaning_dict = {
 }
 
 
-def clean_description(text: str, preserve_paragraphs: bool = True) -> str:
+def clean_description(text: str, preserve_paragraphs: bool = False) -> str:
     """
     Clean scraped job descriptions.
 
@@ -282,7 +282,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             progress_percentage = progress_percentage = 0
             
         description = job.get('description', '')
-        description1 = clean_description(description, preserve_paragraphs=True)
+        description1 = clean_description(description, preserve_paragraphs=False)
         ai_output = summarize_job(description1)
         
         results_list.append({
@@ -326,6 +326,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
