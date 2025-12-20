@@ -8,27 +8,14 @@ import json
 import re
 import html
 
-# -------------------------
-# CONFIG
-# -------------------------
-if 'GEMINI_API_KEY' not in st.secrets:
-    st.error("Missing Gemini API Key in Streamlit Secrets.")
-    st.stop()
-GOOGLE_API_KEY = st.secrets["GEMINI_API_KEY"] 
-
-MODEL_NAME = 'gemini-2.5-flash'
-genai.configure(api_key=GOOGLE_API_KEY)
-# create a single model handle to reuse
-_model = genai.GenerativeModel(MODEL_NAME)
 
 
-# -------------------------
-# UTIL: parsing + cleaning (unchanged)
-# -------------------------
 def parse_json_with_retry(text, model, prompt_retry=None, max_tries=1):
+    # Try direct parse
     try:
         return json.loads(text)
     except Exception:
+        # attempt to find first {...} block
         m = re.search(r"(\{.*\})", text, flags=re.S)
         if m:
             try:
@@ -36,6 +23,7 @@ def parse_json_with_retry(text, model, prompt_retry=None, max_tries=1):
             except Exception:
                 pass
 
+    # If we get here, ask the model to return ONLY JSON (one retry)
     for _ in range(max_tries):
         if not prompt_retry:
             prompt_retry = "The previous output was not valid JSON. Please output only valid JSON for the required fields, and nothing else."
@@ -43,6 +31,7 @@ def parse_json_with_retry(text, model, prompt_retry=None, max_tries=1):
         try:
             return json.loads(resp.text)
         except Exception:
+            # try extracting substring
             m = re.search(r"(\{.*\})", resp.text, flags=re.S)
             if m:
                 try:
@@ -52,27 +41,75 @@ def parse_json_with_retry(text, model, prompt_retry=None, max_tries=1):
     return None
 
 
-cleaning_dict = {"â€™": "'", "â€": " ", "\.": ".", "\+": "+", "\-": "-"}
+# --- CONFIGURATION (Move outside function for Streamlit) ---
+# Use Streamlit secrets for the API key (safer than hardcoding)
+# To use this, create a .streamlit/secrets.toml file with the key.
+if 'GEMINI_API_KEY' not in st.secrets:
+    st.error("Missing Gemini API Key in Streamlit Secrets.")
+    st.stop()
+GOOGLE_API_KEY = st.secrets["GEMINI_API_KEY"] 
+
+# Use a stable model
+MODEL_NAME = 'gemini-2.5-flash'
+
+cleaning_dict = {
+    "â€™": "'",
+    "â€": " ",
+    "\.": ".",
+    "\+": "+",
+    "\-": "-"
+}
+
 
 def clean_description(text: str, preserve_paragraphs: bool = False) -> str:
+    """
+    Clean scraped job descriptions.
+
+    - If preserve_paragraphs=True: keep up to TWO consecutive newlines (paragraph breaks),
+      but remove excessive blank lines and normalize in-paragraph spacing.
+    - If preserve_paragraphs=False: collapse all whitespace into single spaces (fully flattened).
+    """
     if not text:
         return ""
+
+    # 1) HTML entities -> plain text
     text = html.unescape(text)
+
+    # 2) apply small token fixes you discovered
     for k, v in cleaning_dict.items():
         text = text.replace(k, v)
+
+    # 3) normalize line endings (Windows CRLF -> LF)
     text = text.replace("\r\n", "\n").replace("\r", "\n")
+
     if preserve_paragraphs:
+        # A) collapse 3+ newlines into exactly 2 (preserve paragraph breaks)
         text = re.sub(r"\n{3,}", "\n\n", text)
+
+        # B) remove spaces that start or end lines
         text = re.sub(r"[ \t]+\n", "\n", text)
         text = re.sub(r"\n[ \t]+", "\n", text)
+
+        # C) collapse multiple spaces/tabs inside lines to one space
         text = re.sub(r"[ \t]{2,}", " ", text)
+
+        # D) collapse remaining sequences of whitespace longer than 1 char but keep single newlines
+        # Replace any run of whitespace that does NOT contain '\n' with a single space
         text = re.sub(r"[^\S\n]+", " ", text)
+
+        # E) trim leading/trailing whitespace on whole text and each line
         text = "\n".join(line.strip() for line in text.split("\n")).strip()
+
     else:
+        # Fully flatten: collapse everything to single-space tokens (no newlines)
         text = re.sub(r"\s+", " ", text).strip()
+
+    # 2) apply small token fixes you discovered
     for k, v in cleaning_dict.items():
         text = text.replace(k, v)
-    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # Optional: final tiny normalizations
+    text = re.sub(r"\n{3,}", "\n\n", text)  # safety
     return text
 
 def normalize_summary(summary):
@@ -83,239 +120,125 @@ def normalize_summary(summary):
     return str(summary)
 
 
-# -------------------------
-# NEW: small LLM helpers (single-purpose prompts)
-# -------------------------
-def llm_free_text(prompt: str) -> str:
-    """Ask Gemini a single free-text question and return the raw text (deterministic)."""
-    resp = _model.generate_content(prompt, generation_config={"temperature": 0.0})
-    return resp.text.strip()
+def summarize_job(description):
+    if not description or len(description) < 50:
+        return {
+            "job_type_" : "Not specified",
+            "experience": "Not specified",
+            "summary": "No description available"
+        }
 
-
-def ask_experience_raw(description: str, title: str | None = None) -> str:
-    # Single focused prompt to get a human-readable answer (don't enforce buckets here)
     prompt = f"""
-You are a careful job analyst. Answer in one short sentence (1-2 lines).
+    You are a job analysis assistant.
 
-Question: Based on the Job Title and Job Description below, what experience level is required for this role?
+    Return ONLY valid JSON. No explanations.
 
-Guidance:
-- If the description explicitly states years (e.g., "3+ years", "minimum 2 years"), quote that.
-- If no explicit years are present, infer a reasonable label (e.g., "Senior-level, likely 5+ years", "Mid-level, ~3 years") using job title and responsibility scope.
-- If there's no signal, answer "Not specified".
+    Rules:
+    - what is the job type given job description is offering.
+    - Is job is a intership, part time, full time or what, plese choose the type mentioned in the json format.
+    - First check if years of experience are explicitly mentioned.
+    - If yes, map them to the closest bucket.
+    - If not mentioned, infer experience using:
+      - Job title (e.g., Senior, Lead, Manager)
+      - Role scope and responsibility language
+    - If still unclear, return "Not specified".
+    - Do NOT invent precise years—only choose from the allowed closest buckets.
+    - Summary must be 3–4 concise sentences in plain text (NO bullet points).
 
-Job Title:
-{title or "N/A"}
+    JSON format:
+    {{
+      "job_type_" : Full Time | Intership | Contract | Part-Time,
+      "experience": "0-1 years | 1+ years | 0-2 year | 2+ years | 3+ years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
+      "summary": "3–4 sentence summary in plain text"
+    }}
 
-Job Description:
-{description[:8000]}
-"""
-    return llm_free_text(prompt)
+    Job Description:
+    {description[:9000]}
 
-
-def ask_job_type_raw(description: str, title: str | None = None) -> str:
-    prompt = f"""
-You are a job analyst. Answer in a single short phrase (e.g., "Full-time", "Part-time", "Contract", "Internship", "Remote internship", "Not specified").
-
-Question: What job type does this posting offer (full-time, part-time, contract, internship, freelance, etc.)? Use any signals in title or description. If unclear, return "Not specified".
-
-Job Title:
-{title or "N/A"}
-
-Job Description:
-{description[:8000]}
-"""
-    return llm_free_text(prompt)
-
-
-def ask_summary_text(description: str) -> str:
-    prompt = f"""
-You are a clear summarizer. Provide a concise 3-4 sentence summary of the main responsibilities and focus of this job posting. Do not use bullet points. Return only the short paragraph.
-
-Job Description:
-{description[:8000]}
-"""
-    return llm_free_text(prompt)
-
-
-# -------------------------
-# NEW: deterministic mappers (LLM raw -> bucket)
-# -------------------------
-def map_experience_to_bucket(raw_text: str) -> str:
-    """Map an LLM free-text experience answer (or direct JD text) into one of your buckets."""
-    if not raw_text:
-        return "Not specified"
-    text = raw_text.lower()
-
-    # explicit "fresher" or "intern"
-    if re.search(r"\b(fresher|intern(ship)?|entry[- ]?level)\b", text):
-        return "Fresher"
-
-    # explicit ranges / patterns we like to catch first
-    m = re.search(r"(\d+\s*\+\s*years|\d+\s*-\s*\d+\s*years|\d+\s*years)", text)
-    if m:
-        s = m.group(1)
-        # normalize some common forms to your specified buckets
-        if "+" in s:
-            num = re.search(r"(\d+)", s)
-            if num and int(num.group(1)) >= 5:
-                return "5+ years"
-            elif num and int(num.group(1)) >= 3:
-                return "3+ years"
-            else:
-                return "1+ years"
-        # range like "1-3 years"
-        r = re.search(r"(\d+)\s*-\s*(\d+)", s)
-        if r:
-            a, b = int(r.group(1)), int(r.group(2))
-            if a == 0 and b <= 1:
-                return "0-1 years"
-            if a <= 1 and b <= 3:
-                return "1-3 years"
-            if b <= 5:
-                return "3-5 years"
-            return "5+ years"
-        # single "2 years"
-        n = re.search(r"(\d+)\s*years?", s)
-        if n:
-            nval = int(n.group(1))
-            if nval <= 1:
-                return "0-1 years"
-            if nval <= 3:
-                return "1-3 years"
-            if nval <= 5:
-                return "3-5 years"
-            return "5+ years"
-
-    # seniority words
-    if re.search(r"\b(senior|lead|principal|manager|director)\b", text):
-        # prefer higher buckets for manager/director
-        if re.search(r"\b(manager|director|principal)\b", text):
-            return "5+ years"
-        return "3+ years"
-
-    # junior keywords
-    if re.search(r"\b(junior|associate|entry)\b", text):
-        return "0-2 year"
-
-    # fallback
-    return "Not specified"
-
-
-def map_job_type_to_bucket(raw_text: str, scraped_job_type) -> str:
     """
-    Map free-text job type into one of:
-    Full Time | Intership | Contract | Part-Time | Not specified
-    """
-
-    # -------- SAFE NORMALIZATION --------
-    def normalize(val):
-        if val is None:
-            return ""
-        if isinstance(val, list):
-            val = " ".join(str(v) for v in val)
-        if isinstance(val, float):  # NaN case
-            return ""
-        return str(val).strip().lower()
-
-    scraped = normalize(scraped_job_type)
-    raw = normalize(raw_text)
-
-    # -------- Prefer scraped job_type if valid --------
-    if scraped not in ("", "n/a", "na"):
-        if "intern" in scraped:
-            return "Intership"
-        if "part" in scraped:
-            return "Part-Time"
-        if "contract" in scraped or "freelance" in scraped:
-            return "Contract"
-        if "full" in scraped or "permanent" in scraped:
-            return "Full Time"
-
-    # -------- Fallback to LLM raw text --------
-    if "intern" in raw:
-        return "Intership"
-    if "part" in raw:
-        return "Part-Time"
-    if "contract" in raw or "freelance" in raw:
-        return "Contract"
-    if "full" in raw or "permanent" in raw:
-        return "Full Time"
-
-    return "Not specified"
-
-
-
-# -------------------------
-# NEW: main two-pass extractor that replaces summarize_job
-# -------------------------
-def extract_job_fields(description: str, title: str = None, scraped_job_type: str | None = None):
-    """
-    Two-pass extraction:
-    1) Ask LLM short free-text questions: experience_raw, job_type_raw, summary_raw
-    2) Map those free-text answers into deterministic buckets
-    Returns a dict with raw and bucketed fields plus summary text.
-    """
-    # 1) LLM free-text understanding (single-purpose)
-    try:
-        experience_raw = ask_experience_raw(description, title)
-    except Exception as e:
-        experience_raw = "Not specified"
 
     try:
-        job_type_raw = ask_job_type_raw(description, title)
+        genai.configure(api_key=GOOGLE_API_KEY)
+        model = genai.GenerativeModel(MODEL_NAME)
+
+        # 1️⃣ Ask the LLM
+        response = model.generate_content(
+        prompt,
+        generation_config={"temperature": 0.0}
+        )
+
+        # 2️⃣ Parse safely + retry if needed
+        ai_json = parse_json_with_retry(
+            response.text,
+            model,
+            prompt_retry="Please return ONLY valid JSON. No extra text."
+        )
+
+        # 3️⃣ Final guard
+        if ai_json is None:
+            return {
+                "job_type_" : "Not specified",
+                "experience": "Not specified",
+                "summary": "AI parsing failed"
+            }
+
+        return ai_json
+
     except Exception as e:
-        job_type_raw = "Not specified"
-
-    try:
-        summary_raw = ask_summary_text(description)
-    except Exception as e:
-        summary_raw = "Not specified"
-
-    # 2) deterministic mapping
-    experience_bucket = map_experience_to_bucket(experience_raw)
-    job_type_bucket = map_job_type_to_bucket(job_type_raw, scraped_job_type)
-
-    # normalize summary to plain text (defensive)
-    summary_text = normalize_summary(summary_raw)
-
-    return {
-        "experience_raw": experience_raw,
-        "experience": experience_bucket,
-        "job_type_raw": job_type_raw,
-        "job_type_": job_type_bucket,
-        "summary": summary_text
-    }
+        return {
+            "job_type_" : "Not specified",
+            "experience": "Not specified",
+            "summary": f"AI error: {str(e)}"
+        }
 
 
-# -------------------------
-# The rest of your Streamlit app is mostly unchanged - just call extract_job_fields instead of summarize_job
-# -------------------------
 
+# --- STREAMLIT FRONTEND/AGENT RUNNER ---
 st.title("💡 Agentic Job Search Dashboard")
 st.markdown("Enter your job criteria below and the agent will scrape, clean, and summarize the top results for you.")
 
 with st.sidebar:
     st.header("Search Parameters")
-    search_terms_input = st.text_area("Job Search Keywords (One per line)", value="Operations Research\nSupply Chain Management")
-    location_input = st.text_area("Locations (One per line)", value="India\nUSA\nRemote")
-    google_search = st.text_area("Google Search Terms", value="operation research jobs in remote")
+    
+    # User inputs replace the hardcoded lists
+    search_terms_input = st.text_area(
+        "Job Search Keywords (One per line)",
+        value="Operations Research\nSupply Chain Management"
+    )
+    location_input = st.text_area(
+        "Locations (One per line)",
+        value="India\nUSA\nRemote"
+    )
+
+    google_search = st.text_area(
+        "Google Search Terms",
+        value= "operation research jobs in remote"
+    )
+    
     RESULTS_WANTED = st.slider("Max Results Per Search Term/Location", 1, 15, 5)
     HOURS_OLD = st.slider("Maximum Age of Job Post (Hours)", 24, 168, 72)
+
+    # Process inputs into lists
     JOB_SEARCH_TERM = [t.strip() for t in search_terms_input.split('\n') if t.strip()]
     LOCATION = [l.strip() for l in location_input.split('\n') if l.strip()]
-    GOOGLE_SEARCH = google_search.strip()
+    GOOGLE_SEARCH = [l.strip() for l in google_search.split('\n') if l.strip()]
 
     if st.button("Run Job Search Agent 🚀"):
         st.session_state['run_search'] = True
-
+    
+# Main display logic
 if 'run_search' in st.session_state and st.session_state['run_search']:
+    
     all_jobs_dfs = []
+    
     st.subheader(f"Searching for {len(JOB_SEARCH_TERM)} Terms in {len(LOCATION)} Locations...")
-    status_box = st.empty()
+    status_box = st.empty() # Placeholder for status updates
+
+    # 1. SCRAPING LOOP
     for term in JOB_SEARCH_TERM:
         for loc in LOCATION:
             status_box.info(f"🔎 Searching: '{term}' in '{loc}'...")
+            
             try:
                 current_jobs = scrape_jobs(
                     site_name=["linkedin", "indeed"], 
@@ -326,64 +249,81 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
                     hours_old=HOURS_OLD,
                     linkedin_fetch_description=True
                 )
+                
                 if not current_jobs.empty:
                     all_jobs_dfs.append(current_jobs)
+                
                 time.sleep(random.uniform(3, 6))
+                
             except Exception as e:
                 status_box.error(f"❌ Scraping error for {term}/{loc}: {e}")
-                time.sleep(5)
+                time.sleep(5) 
 
     if not all_jobs_dfs:
         status_box.warning("❌ No jobs found matching your criteria.")
         st.session_state['run_search'] = False
         st.stop()
-
+    
+    # 2. CONSOLIDATE AND CLEAN
     status_box.info("Combining and cleaning job results...")
     master_df = pd.concat(all_jobs_dfs, ignore_index=True)
     master_df.drop_duplicates(subset=['job_url'], keep='first', inplace=True)
     master_df['description'] = master_df['description'].fillna('') 
-
+    
     status_box.info(f"Found {len(master_df)} unique jobs. Starting AI summarization...")
 
+    # 3. AI PROCESSING (Using st.progress for visual appeal)
     results_list = []
     total_jobs = len(master_df)
     progress_bar = st.progress(0, text=f"Processing 0 of {total_jobs} summaries...")
-
+    
     for index, job in master_df.iterrows():
         title = job.get('title', 'N/A')
+        
+        # Display progress
         if total_jobs > 0:
             raw_progress = ((index + 1) / total_jobs) * 100
             progress_percentage = max(0, min(100, round(raw_progress)))
         else:
-            progress_percentage = 0
-
+            progress_percentage = progress_percentage = 0
+            
         description = job.get('description', '')
         description1 = clean_description(description, preserve_paragraphs=False)
-
-        # <-- new extractor call -->
-        ai_output = extract_job_fields(description1, title=title, scraped_job_type=job.get('job_type', 'N/A'))
-
+        ai_output = summarize_job(description1)
+        
         results_list.append({
             "Job Title": title,
             "Description": description1,
             "Company": job.get('company', 'N/A'),
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
-            "Ai_job_type": ai_output["job_type_"],
+            "Ai_job_type" : ai_output["job_type_"],
             "Experience Level": ai_output["experience"],
-            "Experience_raw": ai_output["experience_raw"],
             "Apply Link": job.get('job_url', 'N/A'),
-            "Summary": ai_output["summary"]
+            "Summary": normalize_summary(ai_output["summary"])
         })
 
-        time.sleep(0.5)
-
+        time.sleep(0.5) # Shorter sleep here since the AI call is the bottleneck
+        
     progress_bar.empty()
     status_box.success(f"🎉 Agent finished! {len(results_list)} unique jobs summarized.")
 
+    # 4. REPORT (Attractive Display)
     final_df = pd.DataFrame(results_list)
-    st.subheader("Results Dashboard")
-    st.dataframe(final_df, hide_index=True)
+
+    st.subheader("Results Dashboard [Image of Data Visualization Dashboard]")
+
+    st.dataframe(
+        final_df,
+        column_config={
+            "Apply Link": st.column_config.LinkColumn("Apply Link"),
+            "AI Summary": st.column_config.TextColumn(
+            "AI Summary",
+            help="AI-generated key takeaways."
+            ),
+        },
+        hide_index=True
+    )
 
     st.download_button(
         label="Download Full Report as CSV",
