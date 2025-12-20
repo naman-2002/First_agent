@@ -202,33 +202,34 @@ def map_experience_to_bucket(raw_text: str) -> str:
     return "Not specified"
 
 
-def map_job_type_to_bucket(raw_text: str, scraped_job_type: str | None = None) -> str:
+def map_job_type_to_bucket(raw_text: str) -> str:
     """Map free-text job type into one of: Full Time | Internship | Contract | Part-Time | Not specified"""
-    # prefer scraped_job_type if it's informative
-    if scraped_job_type and scraped_job_type.strip().lower() not in ("", "n/a", "na"):
-        s = scraped_job_type.lower()
-        if "intern" in s:
-            return "Internship"
-        if "part" in s:
-            return "Part-Time"
-        if "contract" in s or "freelance" in s:
-            return "Contract"
-        if "full" in s or "permanent" in s:
-            return "Full Time"
-
     if not raw_text:
         return "Not specified"
     text = raw_text.lower()
+
+    # spelled/informal variations
     if re.search(r"\b(intern(ship)?|internship)\b", text):
-        return "Intership"  # keep spelling consistent with your schema (note: you used "Intership" earlier)
+        return "Internship"
     if re.search(r"\b(part[- ]?time|parttime)\b", text):
         return "Part-Time"
     if re.search(r"\b(contract|freelance|temporary)\b", text):
         return "Contract"
     if re.search(r"\b(full[- ]?time|fulltime|permanent)\b", text):
         return "Full Time"
-    # remote doesn't determine job_type; return Not specified if unclear
+
+    # sometimes job ads say "remote internship", so catch "intern" earlier
+    if "intern" in text:
+        return "Internship"
+    if "part" in text:
+        return "Part-Time"
+    if "contract" in text or "freelance" in text:
+        return "Contract"
+    if "full" in text or "permanent" in text:
+        return "Full Time"
+
     return "Not specified"
+
 
 
 # -------------------------
@@ -251,6 +252,11 @@ def extract_job_fields(description: str, title: str = None, scraped_job_type: st
         job_type_raw = ask_job_type_raw(description, title)
     except Exception as e:
         job_type_raw = "Not specified"
+    
+    try:
+        job_type_bucket = map_job_type_to_bucket(job_type_raw)
+    except Exception as e:
+        job_type_bucket = "Not specified"
 
     try:
         summary_raw = ask_summary_text(description)
@@ -259,7 +265,8 @@ def extract_job_fields(description: str, title: str = None, scraped_job_type: st
 
     # 2) deterministic mapping
     experience_bucket = map_experience_to_bucket(experience_raw)
-    job_type_bucket = map_job_type_to_bucket(job_type_raw, scraped_job_type)
+    job_type_bucket = map_job_type_to_bucket(job_type_raw)
+
 
     # normalize summary to plain text (defensive)
     summary_text = normalize_summary(summary_raw)
@@ -290,6 +297,7 @@ with st.sidebar:
     JOB_SEARCH_TERM = [t.strip() for t in search_terms_input.split('\n') if t.strip()]
     LOCATION = [l.strip() for l in location_input.split('\n') if l.strip()]
     GOOGLE_SEARCH = google_search.strip()
+
     if st.button("Run Job Search Agent 🚀"):
         st.session_state['run_search'] = True
 
@@ -345,7 +353,8 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         description1 = clean_description(description, preserve_paragraphs=False)
 
         # <-- new extractor call -->
-        ai_output = extract_job_fields(description1, title=title, scraped_job_type=job.get('job_type', 'N/A'))
+        ai_output = extract_job_fields(description1, title=title)
+
 
         results_list.append({
             "Job Title": title,
@@ -376,4 +385,3 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
-
