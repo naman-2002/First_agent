@@ -202,30 +202,44 @@ def map_experience_to_bucket(raw_text: str) -> str:
     return "Not specified"
 
 
-def map_job_type_to_bucket(raw_text: str) -> str:
-    """Map free-text job type into one of: Full Time | Internship | Contract | Part-Time | Not specified"""
-    if not raw_text:
-        return "Not specified"
-    text = raw_text.lower()
+def map_job_type_to_bucket(raw_text: str, scraped_job_type) -> str:
+    """
+    Map free-text job type into one of:
+    Full Time | Intership | Contract | Part-Time | Not specified
+    """
 
-    # spelled/informal variations
-    if re.search(r"\b(intern(ship)?|internship)\b", text):
-        return "Internship"
-    if re.search(r"\b(part[- ]?time|parttime)\b", text):
-        return "Part-Time"
-    if re.search(r"\b(contract|freelance|temporary)\b", text):
-        return "Contract"
-    if re.search(r"\b(full[- ]?time|fulltime|permanent)\b", text):
-        return "Full Time"
+    # -------- SAFE NORMALIZATION --------
+    def normalize(val):
+        if val is None:
+            return ""
+        if isinstance(val, list):
+            val = " ".join(str(v) for v in val)
+        if isinstance(val, float):  # NaN case
+            return ""
+        return str(val).strip().lower()
 
-    # sometimes job ads say "remote internship", so catch "intern" earlier
-    if "intern" in text:
-        return "Internship"
-    if "part" in text:
+    scraped = normalize(scraped_job_type)
+    raw = normalize(raw_text)
+
+    # -------- Prefer scraped job_type if valid --------
+    if scraped not in ("", "n/a", "na"):
+        if "intern" in scraped:
+            return "Intership"
+        if "part" in scraped:
+            return "Part-Time"
+        if "contract" in scraped or "freelance" in scraped:
+            return "Contract"
+        if "full" in scraped or "permanent" in scraped:
+            return "Full Time"
+
+    # -------- Fallback to LLM raw text --------
+    if "intern" in raw:
+        return "Intership"
+    if "part" in raw:
         return "Part-Time"
-    if "contract" in text or "freelance" in text:
+    if "contract" in raw or "freelance" in raw:
         return "Contract"
-    if "full" in text or "permanent" in text:
+    if "full" in raw or "permanent" in raw:
         return "Full Time"
 
     return "Not specified"
@@ -252,11 +266,6 @@ def extract_job_fields(description: str, title: str = None, scraped_job_type: st
         job_type_raw = ask_job_type_raw(description, title)
     except Exception as e:
         job_type_raw = "Not specified"
-    
-    try:
-        job_type_bucket = map_job_type_to_bucket(job_type_raw)
-    except Exception as e:
-        job_type_bucket = "Not specified"
 
     try:
         summary_raw = ask_summary_text(description)
@@ -265,8 +274,7 @@ def extract_job_fields(description: str, title: str = None, scraped_job_type: st
 
     # 2) deterministic mapping
     experience_bucket = map_experience_to_bucket(experience_raw)
-    job_type_bucket = map_job_type_to_bucket(job_type_raw)
-
+    job_type_bucket = map_job_type_to_bucket(job_type_raw, scraped_job_type)
 
     # normalize summary to plain text (defensive)
     summary_text = normalize_summary(summary_raw)
@@ -353,8 +361,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         description1 = clean_description(description, preserve_paragraphs=False)
 
         # <-- new extractor call -->
-        ai_output = extract_job_fields(description1, title=title)
-
+        ai_output = extract_job_fields(description1, title=title, scraped_job_type=job.get('job_type', 'N/A'))
 
         results_list.append({
             "Job Title": title,
