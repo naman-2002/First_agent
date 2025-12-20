@@ -123,9 +123,8 @@ def normalize_summary(summary):
 def summarize_job(description):
     if not description or len(description) < 50:
         return {
+            "job_type" : "Not specified",
             "experience": "Not specified",
-            "skills": "Not specified",
-            "responsibilities": "Not specified",
             "summary": "No description available"
         }
 
@@ -178,6 +177,7 @@ def summarize_job(description):
         # 3️⃣ Final guard
         if ai_json is None:
             return {
+                "job_type" : "Not specified",
                 "experience": "Not specified",
                 "summary": "AI parsing failed"
             }
@@ -186,6 +186,7 @@ def summarize_job(description):
 
     except Exception as e:
         return {
+            "job_type" : "Not specified",
             "experience": "Not specified",
             "summary": f"AI error: {str(e)}"
         }
@@ -325,6 +326,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
