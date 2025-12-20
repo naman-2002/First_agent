@@ -123,7 +123,7 @@ def normalize_summary(summary):
 def summarize_job(description):
     if not description or len(description) < 50:
         return {
-            "job_type" : "Not specified",
+            "job_type_" : "Not specified",
             "experience": "Not specified",
             "summary": "No description available"
         }
@@ -147,7 +147,7 @@ def summarize_job(description):
 
     JSON format:
     {{
-      "job_type" : Full Time | Intership | Contract | Part-Time,
+      "job_type_" : Full Time | Intership | Contract | Part-Time,
       "experience": "0-1 years | 1+ years | 0-2 year | 2+ years | 3+ years | 1-3 years | 3-5 years | 5+ years | Fresher | Not specified",
       "summary": "3–4 sentence summary in plain text"
     }}
@@ -177,7 +177,7 @@ def summarize_job(description):
         # 3️⃣ Final guard
         if ai_json is None:
             return {
-                "job_type" : "Not specified",
+                "job_type_" : "Not specified",
                 "experience": "Not specified",
                 "summary": "AI parsing failed"
             }
@@ -186,7 +186,7 @@ def summarize_job(description):
 
     except Exception as e:
         return {
-            "job_type" : "Not specified",
+            "job_type_" : "Not specified",
             "experience": "Not specified",
             "summary": f"AI error: {str(e)}"
         }
@@ -291,7 +291,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
             "Company": job.get('company', 'N/A'),
             "Location": job.get('location', 'N/A'),
             "Job Type": job.get('job_type', 'N/A'),
-            "Ai_job_type" : ai_output["job_type"],
+            "Ai_job_type" : ai_output["job_type_"],
             "Experience Level": ai_output["experience"],
             "Apply Link": job.get('job_url', 'N/A'),
             "Summary": normalize_summary(ai_output["summary"])
@@ -326,6 +326,7 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
 
 
