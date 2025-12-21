@@ -91,51 +91,40 @@ def llm_free_text(prompt: str) -> str:
     resp = _model.generate_content(prompt, generation_config={"temperature": 0.0})
     return resp.text.strip()
 
-
-def ask_experience_raw(description: str, title: str | None = None) -> str:
-    # Single focused prompt to get a human-readable answer (don't enforce buckets here)
+def extract_all_fields_raw(description: str, title: str | None = None) -> dict:
+    """
+    Single LLM call to extract experience, job type, and summary together.
+    """
     prompt = f"""
-You are a careful job analyst. Answer in one short sentence (1-2 lines).
+You are a job analysis assistant.
 
-Question: Based on the Job Title and Job Description below, what experience level is required for this role?
+Return ONLY valid JSON. No explanations. No markdown.
 
-Guidance:
-- If the description explicitly states years (e.g., "3+ years", "minimum 2 years"), quote that.
-- If no explicit years are present, infer a reasonable label (e.g., "Senior-level, likely 5+ years", "Mid-level, ~3 years") using job title and responsibility scope.
-- If there's no signal, answer "Not specified".
+Rules:
+- Extract experience requirement as written or inferred.
+- Extract job type (Full-time, Part-time, Contract, Internship).
+- If something is unclear, return "Not specified".
+- Summary must be 3–4 concise sentences in plain text (NO bullet points).
+
+JSON format:
+{{
+  "experience_raw": "Short sentence describing experience requirement or Not specified",
+  "job_type_raw": "Full-time | Part-time | Contract | Internship | Not specified",
+  "summary": "3–4 sentence plain-text summary"
+}}
 
 Job Title:
 {title or "N/A"}
 
 Job Description:
-{description[:8000]}
+{description[:9000]}
 """
-    return llm_free_text(prompt)
+    response = _model.generate_content(
+        prompt,
+        generation_config={"temperature": 0.0}
+    )
+    return parse_json_with_retry(response.text, _model)
 
-
-def ask_job_type_raw(description: str, title: str | None = None) -> str:
-    prompt = f"""
-You are a job analyst. Answer in a single short phrase (e.g., "Full-time", "Part-time", "Contract", "Internship", "Remote internship", "Not specified").
-
-Question: What job type does this posting offer (full-time, part-time, contract, internship, freelance, etc.)? Use any signals in title or description. If unclear, return "Not specified".
-
-Job Title:
-{title or "N/A"}
-
-Job Description:
-{description[:8000]}
-"""
-    return llm_free_text(prompt)
-
-
-def ask_summary_text(description: str) -> str:
-    prompt = f"""
-You are a clear summarizer. Provide a concise 3-4 sentence summary of the main responsibilities and focus of this job posting. Do not use bullet points. Return only the short paragraph.
-
-Job Description:
-{description[:8000]}
-"""
-    return llm_free_text(prompt)
 
 
 # -------------------------
@@ -235,48 +224,34 @@ def map_job_type_to_bucket(raw_text: str) -> str:
 # -------------------------
 # NEW: main two-pass extractor that replaces summarize_job
 # -------------------------
-def extract_job_fields(description: str, title: str = None, scraped_job_type: str | None = None):
+def extract_job_fields(description: str, title: str = None):
     """
-    Two-pass extraction:
-    1) Ask LLM short free-text questions: experience_raw, job_type_raw, summary_raw
-    2) Map those free-text answers into deterministic buckets
-    Returns a dict with raw and bucketed fields plus summary text.
+    One-pass LLM extraction + deterministic mapping
     """
-    # 1) LLM free-text understanding (single-purpose)
     try:
-        experience_raw = ask_experience_raw(description, title)
-    except Exception as e:
-        experience_raw = "Not specified"
+        raw = extract_all_fields_raw(description, title)
+    except Exception:
+        raw = None
 
-    try:
-        job_type_raw = ask_job_type_raw(description, title)
-    except Exception as e:
-        job_type_raw = "Not specified"
-    
-    try:
-        job_type_bucket = map_job_type_to_bucket(job_type_raw)
-    except Exception as e:
-        job_type_bucket = "Not specified"
+    if not raw:
+        return {
+            "experience_raw": "Not specified",
+            "experience": "Not specified",
+            "job_type_raw": "Not specified",
+            "job_type_": "Not specified",
+            "summary": "Not specified"
+        }
 
-    try:
-        summary_raw = ask_summary_text(description)
-    except Exception as e:
-        summary_raw = "Not specified"
-
-    # 2) deterministic mapping
-    experience_bucket = map_experience_to_bucket(experience_raw)
-    job_type_bucket = map_job_type_to_bucket(job_type_raw)
-
-
-    # normalize summary to plain text (defensive)
-    summary_text = normalize_summary(summary_raw)
+    experience_raw = raw.get("experience_raw", "Not specified")
+    job_type_raw = raw.get("job_type_raw", "Not specified")
+    summary_raw = raw.get("summary", "Not specified")
 
     return {
         "experience_raw": experience_raw,
-        "experience": experience_bucket,
+        "experience": map_experience_to_bucket(experience_raw),
         "job_type_raw": job_type_raw,
-        "job_type_": job_type_bucket,
-        "summary": summary_text
+        "job_type_": map_job_type_to_bucket(job_type_raw),
+        "summary": normalize_summary(summary_raw)
     }
 
 
