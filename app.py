@@ -221,7 +221,7 @@ with st.sidebar:
     # Process inputs into lists
     JOB_SEARCH_TERM = [t.strip() for t in search_terms_input.split('\n') if t.strip()]
     LOCATION = [l.strip() for l in location_input.split('\n') if l.strip()]
-    GOOGLE_SEARCH = [l.strip() for l in google_search.split('\n') if l.strip()]
+    GOOGLE_SEARCH = google_search.strip()
 
     if st.button("Run Job Search Agent 🚀"):
         st.session_state['run_search'] = True
@@ -332,3 +332,4 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
