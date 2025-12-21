@@ -50,7 +50,7 @@ if 'GEMINI_API_KEY' not in st.secrets:
 GOOGLE_API_KEY = st.secrets["GEMINI_API_KEY"] 
 
 # Use a stable model
-MODEL_NAME = 'gemma-3-12b'
+MODEL_NAME = 'gemma-3-12b-it'
 
 cleaning_dict = {
     "â€™": "'",
@@ -332,4 +332,5 @@ if 'run_search' in st.session_state and st.session_state['run_search']:
         mime='text/csv',
     )
     st.session_state['run_search'] = False
+
 
